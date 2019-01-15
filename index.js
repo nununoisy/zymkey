@@ -32,7 +32,11 @@ function ZymkeyClient() {
         'zkSetTapSensitivity': ['int', [zkPtr, 'int', 'float']],
         'zkGetTime': ['int', [zkPtr, 'int *', 'bool']],
         'zkSetGMTTime': ['int', [zkPtr]],
-        'zkLEDFlash': ['int', [zkPtr, 'ulong', 'ulong', 'ulong']]
+        'zkLEDFlash': ['int', [zkPtr, 'ulong', 'ulong', 'ulong']],
+        'zkClearPerimeterDetectEvents': ['int', [zkPtr]],
+        'zkGetPerimeterDetectInfo': ['int', [zkPtr, 'uint32 **', 'int &']],
+        'zkSetPerimeterEventAction': ['int', [zkPtr, 'int', 'uint32']],
+        'zkWaitForPerimeterEvent': ['int', [zkPtr, 'uint32']]
     });
 
     var zkCtx = ref.alloc('pointer');
@@ -48,7 +52,7 @@ function ZymkeyClient() {
 /**
  * Retrieve ECDSA public key.
  *
- * @returns {Bufffer} - The public key buffer.
+ * @returns {Buffer} - The public key buffer.
  */
 ZymkeyClient.prototype.getECDSAPubKey = function () {
     var self = this;
@@ -307,5 +311,82 @@ ZymkeyClient.prototype.verify = function (src, sig) {
     return (ret==1);
 }
 
+/**
+ * Clear perimeter detect events.
+ *
+ * @returns {boolean} - True if success.
+ */
+ZymkeyClient.prototype.clearPerimeterEvents = function () {
+      var self = this;
+      var ret = self._zkLib.zkClearPerimeterDetectEvents(self._zkCtx);
+      return ret;
+}
+
+/**
+ * Retrieve information on perimeter detect events.
+ *
+ * @returns {String[]} - Perimeter event timestamps.
+ */
+
+ZymkeyClient.prototype.getPerimeterEvents = function () {
+      var self = this;
+      var timestamp_sec_ptr = ref.alloc('uint32').ref();
+      var num_timestamps_ref = ref.alloc('int');
+      var ret = self._zkLib.zkGetPerimeterDetectInfo(self._zkCtx, timestamp_sec_ptr, num_timestamps_ref);
+      // TODO error handling
+      var timestamp_sec_buf = timestamp_sec.deref();
+      var timestamp_sec = ref.readObject(timestamp_sec_buf);
+      var num_timestamps = num_timestamps_ref.deref();
+      if (num_timestamps === 0) return [];
+      return timestamp_sec;
+}
+
+/**
+ * Set automatic actions for perimeter events.
+ * 
+ * @param {Number} channel - Channel number to set actions for.
+ * @param {Number} action_flags - What events to trigger. Defined as constants in the ZymkeyClient class.
+ * @returns {boolean} - True if success.
+ */
+ZymkeyClient.prototype.setPerimeterEventActions = function (channel, action_flags) {
+      var self = this;
+      var ret = self._zkLib.zkSetPerimeterEventAction(self._zkCtx, channel, action_flags);
+      return ret;
+}
+
+/**
+ * Wait synchronously for a perimeter event. Blocks the current thread until a timeout expires.
+ * To figure out which channel was triggered, use getPerimeterEvents().
+ *
+ * @param {Number} timeout - Timeout in milliseconds.
+ * @returns {boolean} - Always true.
+ */
+ZymkeyClient.prototype.waitForPerimeterEventSync = function (timeout) {
+      var self = this;
+      self._zkLib.waitForPerimeterEvent(self._zkCtx, timeout);
+      return true;
+}
+
+/**
+ * Wait asynchronously for a perimeter event. When an event occurrs, a callback function is called.
+ *
+ * @param {perimeterCallback} callback - Callback for perimeter event.
+ * @returns {boolean} - True if success.
+ */
+
+ZymkeyClient.prototype.waitForPerimeterEvent = function (callback) {
+      var self = this;
+      self._zkLib.waitForPerimeterEvent.async(self._zkCtx, 0, function (err, res) {
+            if (err || typeof(callback) !== "function") throw new Error(err);
+            callback();
+      });
+      return true;
+}
+
+/**
+ * Callback for the waitForPerimeterEvent() asynchronous function. No arguments. Get information from getPerimeterEvents().
+ * @callback perimeterCallback
+ */
+ 
 module.exports = exports = new ZymkeyClient();
 
